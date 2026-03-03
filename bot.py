@@ -227,6 +227,11 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
 async def margin(interaction: discord.Interaction):
     modal = MarginModal()
     await interaction.response.send_modal(modal)
-  
+
+# 강제 sync (명령어 안 보일 때 필수)
+@client.event
+async def on_ready():
+    await tree.sync(guild=None)   # 전체 서버에 sync
+    print(f'{client.user} 상인단 차트봇 ON (마진계산기 + 차트 전부 합체 완료) - sync 완료')
 print("=== 최신 합체 v2.0 적용됨 ===")
 client.run(TOKEN)
