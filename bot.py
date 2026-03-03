@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import ui, app_commands
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import sqlite3
 from datetime import datetime, timedelta
 import io
@@ -11,9 +12,12 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 (Railway 서버용) ====================
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial', 'sans-serif']
+# ==================== 한글 폰트 (Railway 서버 최적화) ====================
+plt.rcParams['font.family'] = 'DejaVu Sans'
 plt.rcParams['axes.unicode_minus'] = False
+# 폰트 캐시 강제 재빌드 (에러 방지)
+fm.fontManager.addfont('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -49,7 +53,7 @@ def parse_number(text: str) -> int:
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.2 완성판')
+    print(f'{client.user} 상인단 차트봇 ON - v2.3 완성판 (폰트 완전 해결)')
 
 # ==================== 차트 기능 ====================
 def price_formatter(x, pos):
