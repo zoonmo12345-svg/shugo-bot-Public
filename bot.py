@@ -48,9 +48,8 @@ def parse_number(text: str) -> int:
 # ==================== on_ready (동기화 강화) ====================
 @client.event
 async def on_ready():
-    await tree.clear_commands(guild=None)   # 기존 명령어 캐시 전체 삭제
-    await tree.sync(guild=None)             # 글로벌 동기화
-    print(f'{client.user} 상인단 차트봇 ON - v2.0 완전판 (원래 스타일 유지)')
+    await tree.sync(guild=None)
+    print(f'{client.user} 상인단 차트봇 ON - v2.1 완전판')
 
 # ==================== 차트 기능 (원래 choices 그대로) ====================
 def price_formatter(x, pos):
