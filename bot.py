@@ -11,8 +11,7 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 (Railway 최종 해결) ====================
-plt.rcParams['font.family'] = 'NanumGothic'
+# ==================== 설정 ====================
 plt.rcParams['axes.unicode_minus'] = False
 
 load_dotenv()
@@ -34,6 +33,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS prices
               timestamp TEXT)''')
 conn.commit()
 
+# ==================== 수식 계산 ====================
 def parse_number(text: str) -> int:
     text = text.replace(" ", "")
     if not re.match(r'^[0-9+\-*/().]+$', text):
@@ -44,17 +44,18 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
+# ==================== on_ready ====================
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.5 최종완성 (한글 완전 해결)')
+    print(f'{client.user} 상인단 차트봇 ON - v2.6 최종완성 (한글 포기 + 가격 표시 강화)')
 
 # ==================== 차트 기능 ====================
 def price_formatter(x, pos):
     if x >= 100_000_000:
-        return f'{x/100_000_000:.1f}억'
+        return f'{x/100_000_000:.1f}B'
     elif x >= 10_000:
-        return f'{x/10_000:.0f}만'
+        return f'{x/10_000:.0f}M'
     else:
         return f'{int(x):,}'
 
@@ -107,13 +108,25 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.plot(resampled.index, resampled['close'], marker='o', linewidth=2.5, color='#0066ff', label='Close Price')
     plt.fill_between(resampled.index, resampled['low'], resampled['high'], color='gray', alpha=0.25)
     plt.gca().yaxis.set_major_formatter(FuncFormatter(price_formatter))
-    plt.title(f'{아이템} 가격 추이 ({봉타입_str})', fontsize=14, pad=20)
-    plt.xlabel('시간')
-    plt.ylabel('가격 (키나)')
+    plt.title(f'Price Chart - {아이템} ({봉타입_str})', fontsize=14, pad=20)
+    plt.xlabel('Time')
+    plt.ylabel('Price (Kina)')
     plt.grid(True, alpha=0.3)
     plt.xticks(rotation=45)
     plt.legend(fontsize=11)
     plt.tight_layout()
+    
+    # 최근 10개 가격 숫자 표시 (겹침 최소화)
+    for i in range(max(0, len(resampled)-10), len(resampled)):
+        price = resampled['close'].iloc[i]
+        plt.annotate(f'{int(price):,}', 
+                     (resampled.index[i], price), 
+                     textcoords="offset points", 
+                     xytext=(0, 14), 
+                     ha='center', 
+                     fontsize=8, 
+                     color='#0066ff', 
+                     fontweight='bold')
     
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=180, bbox_inches='tight')
@@ -121,7 +134,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.close()
     
     file = discord.File(buf, filename=f"{아이템}_chart.png")
-    embed = discord.Embed(title=f"{아이템} {봉타입_str} 차트", color=0x00ff00)
+    embed = discord.Embed(title=f"{아이템} {봉타입_str} Chart", color=0x00ff00)
     embed.set_image(url="attachment://" + f"{아이템}_chart.png")
     
     await interaction.followup.send(embed=embed, file=file)
