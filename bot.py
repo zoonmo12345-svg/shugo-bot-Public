@@ -11,7 +11,6 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 포기 ====================
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -46,9 +45,9 @@ def parse_number(text: str) -> int:
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.9 최종')
+    print(f'{client.user} 상인단 차트봇 ON - v2.9 최종 (PNG 제목 한글 완전 제거)')
 
-# ==================== 차트 기능 (PNG만 영어) ====================
+# ==================== 차트 기능 ====================
 def price_formatter(x, pos):
     if x >= 100_000_000:
         return f'{x/100_000_000:.1f}B'
@@ -80,7 +79,9 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     await interaction.response.defer()
     await interaction.followup.send("그래프 생성중이라거~ 잠시만!")
 
-    봉타입_str = 봉타입.value if 봉타입 else '일봉'
+    type_kr = 봉타입.value if 봉타입 else '일봉'
+    type_eng = {"분봉": "Min", "시간봉": "Hourly", "일봉": "Daily", "월봉": "Monthly"}.get(type_kr, "Daily")
+    
     valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
     
     c.execute("SELECT timestamp, price FROM prices WHERE item_name=? ORDER BY timestamp ASC", (아이템,))
@@ -94,7 +95,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
     
-    resampled = df.resample(valid_timeframes[봉타입_str]).agg({'price': ['first', 'max', 'min', 'last']})
+    resampled = df.resample(valid_timeframes[type_kr]).agg({'price': ['first', 'max', 'min', 'last']})
     resampled.columns = ['open', 'high', 'low', 'close']
     resampled = resampled.dropna()
     
@@ -107,8 +108,9 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.fill_between(resampled.index, resampled['low'], resampled['high'], color='gray', alpha=0.25)
     plt.gca().yaxis.set_major_formatter(FuncFormatter(price_formatter))
     
-    # PNG 제목만 영어로
-    plt.title(f'Price Chart ({봉타입_str})', fontsize=14, pad=20)
+    # PNG 제목 완전 영어
+    plt.title(f'Price Chart - {type_eng}', fontsize=14, pad=20)
+    
     plt.xlabel('Time')
     plt.ylabel('Price (Kina)')
     plt.grid(True, alpha=0.3)
@@ -118,14 +120,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     
     for i in range(max(0, len(resampled)-10), len(resampled)):
         price = resampled['close'].iloc[i]
-        plt.annotate(f'{int(price):,}', 
-                     (resampled.index[i], price), 
-                     textcoords="offset points", 
-                     xytext=(0, 14), 
-                     ha='center', 
-                     fontsize=8, 
-                     color='#0066ff', 
-                     fontweight='bold')
+        plt.annotate(f'{int(price):,}', (resampled.index[i], price), textcoords="offset points", xytext=(0, 14), ha='center', fontsize=8, color='#0066ff', fontweight='bold')
     
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=180, bbox_inches='tight')
@@ -133,7 +128,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.close()
     
     file = discord.File(buf, filename=f"{아이템}_chart.png")
-    embed = discord.Embed(title=f"{아이템} {봉타입_str} 차트", color=0x00ff00)
+    embed = discord.Embed(title=f"{아이템} {type_kr} 차트", color=0x00ff00)
     embed.set_image(url="attachment://" + f"{아이템}_chart.png")
     
     await interaction.followup.send(embed=embed, file=file)
