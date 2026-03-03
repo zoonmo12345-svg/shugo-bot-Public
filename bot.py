@@ -45,17 +45,9 @@ def parse_number(text: str) -> int:
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.9 최종 (PNG 제목 한글 완전 제거)')
+    print(f'{client.user} 상인단 차트봇 ON - v3.0 최종완성')
 
-# ==================== 차트 기능 ====================
-def price_formatter(x, pos):
-    if x >= 100_000_000:
-        return f'{x/100_000_000:.1f}B'
-    elif x >= 10_000:
-        return f'{x/10_000:.0f}M'
-    else:
-        return f'{int(x):,}'
-
+# ==================== 기록 ====================
 @tree.command(name="기록", description="아이템 가격 기록")
 async def add_price(interaction: discord.Interaction, 아이템: str, 가격: float):
     now = datetime.now().isoformat()
@@ -67,6 +59,7 @@ async def add_price(interaction: discord.Interaction, 아이템: str, 가격: fl
     conn.commit()
     await interaction.response.send_message(f"✅ {아이템} {가격:,}키나 기록 완료!")
 
+# ==================== 차트 ====================
 @tree.command(name="차트", description="아이템 가격 추이 차트")
 @app_commands.describe(아이템="아이템 이름")
 @app_commands.choices(봉타입=[
@@ -79,9 +72,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     await interaction.response.defer()
     await interaction.followup.send("그래프 생성중이라거~ 잠시만!")
 
-    type_kr = 봉타입.value if 봉타입 else '일봉'
-    type_eng = {"분봉": "Min", "시간봉": "Hourly", "일봉": "Daily", "월봉": "Monthly"}.get(type_kr, "Daily")
-    
+    봉타입_str = 봉타입.value if 봉타입 else '일봉'
     valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
     
     c.execute("SELECT timestamp, price FROM prices WHERE item_name=? ORDER BY timestamp ASC", (아이템,))
@@ -95,7 +86,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
     
-    resampled = df.resample(valid_timeframes[type_kr]).agg({'price': ['first', 'max', 'min', 'last']})
+    resampled = df.resample(valid_timeframes[봉타입_str]).agg({'price': ['first', 'max', 'min', 'last']})
     resampled.columns = ['open', 'high', 'low', 'close']
     resampled = resampled.dropna()
     
@@ -107,10 +98,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.plot(resampled.index, resampled['close'], marker='o', linewidth=2.5, color='#0066ff', label='Close Price')
     plt.fill_between(resampled.index, resampled['low'], resampled['high'], color='gray', alpha=0.25)
     plt.gca().yaxis.set_major_formatter(FuncFormatter(price_formatter))
-    
-    # PNG 제목 완전 영어
-    plt.title(f'Price Chart - {type_eng}', fontsize=14, pad=20)
-    
+    plt.title(f'Price Chart ({봉타입_str})', fontsize=14, pad=20)
     plt.xlabel('Time')
     plt.ylabel('Price (Kina)')
     plt.grid(True, alpha=0.3)
@@ -128,33 +116,51 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.close()
     
     file = discord.File(buf, filename=f"{아이템}_chart.png")
-    embed = discord.Embed(title=f"{아이템} {type_kr} 차트", color=0x00ff00)
+    embed = discord.Embed(title=f"{아이템} {봉타입_str} 차트", color=0x00ff00)
     embed.set_image(url="attachment://" + f"{아이템}_chart.png")
     
     await interaction.followup.send(embed=embed, file=file)
 
-# 아이템 자동완성
 @show_chart.autocomplete('아이템')
 async def autocomplete_item(interaction: discord.Interaction, current: str):
     c.execute("SELECT DISTINCT item_name FROM prices WHERE item_name LIKE ? LIMIT 25", (current + '%',))
     items = [row[0] for row in c.fetchall()]
     return [app_commands.Choice(name=item, value=item) for item in items]
 
-@tree.command(name="차트수정", description="잘못된 가격 삭제")
-@app_commands.checks.has_permissions(administrator=True)
-async def delete_price(interaction: discord.Interaction, 아이템: str, 가격: float, 날짜시간: str):
-    try:
-        dt = datetime.strptime(날짜시간, '%Y-%m-%d-%H-%M')
-    except ValueError:
-        await interaction.response.send_message("❌ 형식: yyyy-mm-dd-hh-mm")
-        return
-    start = dt - timedelta(minutes=1)
-    end = dt + timedelta(minutes=1)
-    c.execute("DELETE FROM prices WHERE item_name=? AND price=? AND timestamp BETWEEN ? AND ?", (아이템, 가격, start.isoformat(), end.isoformat()))
-    conn.commit()
-    await interaction.response.send_message(f"✅ {c.rowcount}개 데이터 삭제 완료!")
+# ==================== 차트수정 (네가 원하는 방식) ====================
+@tree.command(name="차트수정", description="차트 기록 수정")
+@app_commands.describe(아이템="아이템 이름")
+@app_commands.choices(작업=[
+    app_commands.Choice(name="전체 초기화", value="초기화"),
+    app_commands.Choice(name="특정 가격 삭제", value="가격"),
+])
+async def chart_edit(interaction: discord.Interaction, 아이템: str, 작업: app_commands.Choice[str]):
+    if 작업.value == "초기화":
+        c.execute("DELETE FROM prices WHERE item_name=?", (아이템,))
+        conn.commit()
+        await interaction.response.send_message(f"✅ {아이템} 모든 기록 초기화 완료!")
+    
+    else:  # 특정 가격 삭제
+        class PriceModal(ui.Modal, title=f"{아이템} 특정 가격 삭제"):
+            price = ui.TextInput(label="삭제할 가격 (키나)", placeholder="예: 5240000 또는 5000000+240000", style=discord.TextStyle.short, required=True)
+            
+            async def on_submit(self, interaction2: discord.Interaction):
+                try:
+                    target_price = parse_number(self.price.value)
+                except:
+                    await interaction2.response.send_message("❌ 숫자나 수식만 입력해!", ephemeral=True)
+                    return
+                
+                c.execute("DELETE FROM prices WHERE item_name=? AND price=?", (아이템, target_price))
+                deleted = c.rowcount
+                conn.commit()
+                await interaction2.response.send_message(f"✅ {아이템}에서 {target_price:,}키나 기록 {deleted}개 삭제 완료!")
+
+        await interaction.response.send_modal(PriceModal())
 
 # ==================== 마진 계산기 (한글 그대로) ====================
+# (기존 마진 계산기 코드 그대로 유지 - 생략 없이 그대로)
+
 class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만!"):
     material_cost_per = ui.TextInput(label="하나당 재료비 (키나)", placeholder="5000 또는 1000+1200*3", style=discord.TextStyle.short, required=False)
     total_material_input = ui.TextInput(label="총 재료비 (키나)", placeholder="15000000 또는 5000*3000", style=discord.TextStyle.short, required=False)
