@@ -11,8 +11,8 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 (Railway 안전 버전) ====================
-plt.rcParams['font.family'] = 'sans-serif'
+# ==================== 한글 폰트 (Railway 완전 해결) ====================
+plt.rcParams['font.family'] = 'NanumGothic'
 plt.rcParams['axes.unicode_minus'] = False
 
 load_dotenv()
@@ -49,7 +49,7 @@ def parse_number(text: str) -> int:
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.4 완성판 (폰트 완전 해결)')
+    print(f'{client.user} 상인단 차트봇 ON - v2.5 완성판 (한글+모든 기능 정상)')
 
 # ==================== 차트 기능 ====================
 def price_formatter(x, pos):
