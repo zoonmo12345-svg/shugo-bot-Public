@@ -227,5 +227,6 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
 async def margin(interaction: discord.Interaction):
     modal = MarginModal()
     await interaction.response.send_modal(modal)
-
+  
+print("=== 최신 합체 v2.0 적용됨 ===")
 client.run(TOKEN)
