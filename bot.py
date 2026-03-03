@@ -246,5 +246,5 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
 async def margin(interaction: discord.Interaction):
     modal = MarginModal()
     await interaction.response.send_modal(modal)
-v1.6
+
 client.run(TOKEN)
