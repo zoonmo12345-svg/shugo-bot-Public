@@ -34,7 +34,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS prices
               timestamp TEXT)''')
 conn.commit()
 
-# ==================== 수식 계산 함수 ====================
+# ==================== 수식 계산 ====================
 def parse_number(text: str) -> int:
     text = text.replace(" ", "")
     if not re.match(r'^[0-9+\-*/().]+$', text):
@@ -45,14 +45,13 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
-# ==================== on_ready (v1.8 표시) ====================
+# ==================== on_ready ====================
 @client.event
 async def on_ready():
-    await tree.sync(guild=None)   # 전체 서버 동기화
-    print(f'{client.user} 상인단 차트봇 ON - v1.8 (마진계산기 + 차트 전부 합체 완료)')
-    print("=== v1.8 버전 적용됨 ===")
+    await tree.sync(guild=None)
+    print(f'{client.user} 상인단 차트봇 ON - v2.0 완전판 (차트 + 마진 모두 정상)')
 
-# ==================== 차트 기능 ====================
+# ==================== 차트 기능 (단순화) ====================
 def price_formatter(x, pos):
     if x >= 100_000_000:
         return f'{x/100_000_000:.1f}억'
@@ -73,12 +72,12 @@ async def add_price(interaction: discord.Interaction, 아이템: str, 가격: fl
     await interaction.response.send_message(f"✅ {아이템} {가격:,}키나 기록 완료!")
 
 @tree.command(name="차트", description="아이템 가격 추이 차트")
-@app_commands.describe(아이템="아이템 이름")
+@app_commands.describe(아이템="아이템 이름", 봉타입="봉 종류 (분봉/시간봉/일봉/월봉)")
 async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입: str = "일봉"):
     await interaction.response.defer()
     
-    valid_types = ["분봉", "시간봉", "일봉", "월봉"]
-    if 봉타입 not in valid_types:
+    valid = ["분봉", "시간봉", "일봉", "월봉"]
+    if 봉타입 not in valid:
         봉타입 = "일봉"
     
     valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
@@ -144,11 +143,11 @@ async def delete_price(interaction: discord.Interaction, 아이템: str, 가격:
     await interaction.response.send_message(f"✅ {c.rowcount}개 데이터 삭제 완료!")
 
 # ==================== 마진 계산기 ====================
-class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만 입력해달라거~!"):
-    material_cost_per = ui.TextInput(label="하나당 재료비 (키나)", placeholder="예: 5000 또는 1000+1200*3", style=discord.TextStyle.short, required=False)
-    total_material_input = ui.TextInput(label="총 재료비 (키나)", placeholder="예: 15000000 또는 5000*3000", style=discord.TextStyle.short, required=False)
-    sale_price = ui.TextInput(label="판매 희망가 (키나)", placeholder="예: 1000000 또는 500000*2", style=discord.TextStyle.short, required=True)
-    craft_count = ui.TextInput(label="제작할 개수", placeholder="예: 100 또는 50+20", style=discord.TextStyle.short, required=True, default="100")
+class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만!"):
+    material_cost_per = ui.TextInput(label="하나당 재료비 (키나)", placeholder="5000 또는 1000+1200*3", style=discord.TextStyle.short, required=False)
+    total_material_input = ui.TextInput(label="총 재료비 (키나)", placeholder="15000000 또는 5000*3000", style=discord.TextStyle.short, required=False)
+    sale_price = ui.TextInput(label="판매 희망가 (키나)", placeholder="1000000", style=discord.TextStyle.short, required=True)
+    craft_count = ui.TextInput(label="제작할 개수", placeholder="100", style=discord.TextStyle.short, required=True, default="100")
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -159,10 +158,10 @@ class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당
             total_str = self.total_material_input.value.strip()
 
             if not per and not total_str:
-                await interaction.response.send_message("❌ 하나당 재료비 또는 총 재료비 중 **하나만** 입력해달라거~!", ephemeral=True)
+                await interaction.response.send_message("❌ 하나당 또는 총 재료비 중 하나만 입력해!", ephemeral=True)
                 return
             if per and total_str:
-                await interaction.response.send_message("❌ 하나당과 총 재료비 **둘 다 넣지 마**! 하나만!", ephemeral=True)
+                await interaction.response.send_message("❌ 둘 다 입력하지 마! 하나만!", ephemeral=True)
                 return
 
             if per:
@@ -174,7 +173,7 @@ class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당
             total_material = material_cost * craft_count
 
         except ValueError:
-            await interaction.response.send_message("숫자나 수식만 입력해달라거~!", ephemeral=True)
+            await interaction.response.send_message("숫자나 수식만 입력해!", ephemeral=True)
             return
 
         net_per_sale = sale_price * 0.8
@@ -188,7 +187,7 @@ class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당
         embed = discord.Embed(title="🛠 마진 계산 결과", color=discord.Color.blue())
         embed.add_field(name="📊 제작 계획", value=f"• 제작할 개수: **{craft_count}개**\n• 판매 희망가: **{sale_price:,} 키나**", inline=False)
         embed.add_field(name="💰 투자 정보", value=f"• 총 재료비: **{total_material:,} 키나**", inline=False)
-        embed.add_field(name="🔥 손익분기점 (22% 수수료 포함)", value=f"**최소 {breakeven}개 성공**해야 본전 + 수익 시작\n\n- {breakeven_minus1}개 성공 → **{profit_minus1:,} 키나** (손해)\n- {breakeven}개 성공 → **{profit_breakeven:,} 키나** (이익 시작)", inline=False)
+        embed.add_field(name="🔥 손익분기점", value=f"**최소 {breakeven}개 성공**해야 본전\n\n- {breakeven_minus1}개 → **{profit_minus1:,}** (손해)\n- {breakeven}개 → **{profit_breakeven:,}** (이익 시작)", inline=False)
 
         view = ui.View()
         button = ui.Button(label="최종 순이익 계산하기", style=discord.ButtonStyle.primary)
@@ -202,7 +201,7 @@ class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당
         await interaction.response.send_modal(modal)
 
 class ProfitModal(ui.Modal, title="최종 순이익 입력"):
-    success_count = ui.TextInput(label="성공한 개수 ← 수식 OK", style=discord.TextStyle.short, required=True)
+    success_count = ui.TextInput(label="성공한 개수", style=discord.TextStyle.short, required=True)
 
     def __init__(self, material_cost, sale_price, craft_count, total_material):
         super().__init__()
@@ -215,7 +214,7 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
         try:
             success_count = parse_number(self.success_count.value)
         except ValueError:
-            await interaction.response.send_message("숫자나 수식만 입력해달라거~!", ephemeral=True)
+            await interaction.response.send_message("숫자나 수식만 입력해!", ephemeral=True)
             return
 
         reg_fee = self.sale_price * success_count * 0.02
@@ -226,13 +225,12 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
 
         embed = discord.Embed(title="✅ 최종 순이익 계산 완료", color=discord.Color.green())
         embed.add_field(name="📊 결과 요약", value=f"• 성공 개수: **{success_count}개**\n• 판매 희망가: **{self.sale_price:,} 키나**", inline=False)
-        embed.add_field(name="💰 비용", value=f"• 총 재료비: **{self.total_material:,} 키나**\n• 등록수수료 (2%): **{reg_fee:,} 키나**\n• **총 투자금: {total_invest:,} 키나**", inline=False)
-        embed.add_field(name="📈 수익", value=f"• 총 실수령액: **{net_revenue:,} 키나**", inline=False)
+        embed.add_field(name="💰 비용", value=f"• 총 재료비: **{self.total_material:,} 키나**\n• 등록수수료 (2%): **{reg_fee:,} 키나**\n• 총 투자금: **{total_invest:,} 키나**", inline=False)
+        embed.add_field(name="📈 수익", value=f"• 실수령액: **{net_revenue:,} 키나**", inline=False)
         embed.add_field(name="💎 최종 순이익", value=f"+{profit:,} 키나\n**마진률: {margin_rate:.1f}%**", inline=False)
 
         await interaction.response.send_message(embed=embed)
 
-# /마진계산 명령어
 @tree.command(name="마진계산", description="아이온2 마진 계산기")
 async def margin(interaction: discord.Interaction):
     modal = MarginModal()
