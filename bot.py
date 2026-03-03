@@ -45,10 +45,11 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
+# ==================== on_ready (하나로 합침) ====================
 @client.event
 async def on_ready():
-    await tree.sync()
-    print(f'{client.user} 상인단 차트봇 ON (마진계산기 + 차트 전부 합체 완료)')
+    await tree.sync(guild=None)   # 전체 서버에 명령어 동기화 (강제)
+    print(f'{client.user} 상인단 차트봇 ON (마진계산기 + 차트 전부 합체 완료) - sync 완료')
 
 # ==================== 차트봇 기존 기능 ====================
 def price_formatter(x, pos):
@@ -80,25 +81,39 @@ async def add_price(interaction: discord.Interaction, 아이템: str, 가격: fl
 ])
 async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입: app_commands.Choice[str] = None):
     await interaction.response.defer()
+    
     봉타입_str = 봉타입.value if 봉타입 else '일봉'
-    valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
+    
+    valid_timeframes = {
+        '분봉': 'min',
+        '시간봉': 'h',
+        '일봉': 'D',
+        '월봉': 'ME'
+    }
+    
     c.execute("SELECT timestamp, price FROM prices WHERE item_name=? ORDER BY timestamp ASC", (아이템,))
     data = c.fetchall()
+    
     if not data:
         await interaction.followup.send("❌ 기록된 가격 없음")
         return
+    
     df = pd.DataFrame(data, columns=['timestamp', 'price'])
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
+    
     resampled = df.resample(valid_timeframes[봉타입_str]).agg({'price': ['first', 'max', 'min', 'last']})
     resampled.columns = ['open', 'high', 'low', 'close']
     resampled = resampled.dropna()
+    
     if resampled.empty:
         await interaction.followup.send("❌ 데이터 부족")
         return
+    
     plt.figure(figsize=(12, 7))
     plt.plot(resampled.index, resampled['close'], marker='o', linewidth=2.5, color='#0066ff', label='Close Price')
     plt.fill_between(resampled.index, resampled['low'], resampled['high'], color='gray', alpha=0.25)
+    
     plt.gca().yaxis.set_major_formatter(FuncFormatter(price_formatter))
     plt.title(f'{아이템} 가격 추이 ({봉타입_str})', fontsize=14, pad=20)
     plt.xlabel('시간')
@@ -107,16 +122,20 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.xticks(rotation=45)
     plt.legend(fontsize=11)
     plt.tight_layout()
+    
     for i in range(max(0, len(resampled)-15), len(resampled)):
         price = resampled['close'].iloc[i]
         plt.annotate(f'{int(price):,}', (resampled.index[i], price), textcoords="offset points", xytext=(0, 12), ha='center', fontsize=9, color='#0066ff', fontweight='bold')
+    
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=220, bbox_inches='tight')
     buf.seek(0)
     plt.close()
+    
     file = discord.File(buf, filename=f"{아이템}_chart.png")
     embed = discord.Embed(title=f"{아이템} {봉타입_str} 차트", color=0x00ff00)
     embed.set_image(url="attachment://" + f"{아이템}_chart.png")
+    
     await interaction.followup.send(embed=embed, file=file)
 
 @tree.command(name="차트수정", description="잘못된 가격 삭제")
@@ -133,7 +152,7 @@ async def delete_price(interaction: discord.Interaction, 아이템: str, 가격:
     conn.commit()
     await interaction.response.send_message(f"✅ {c.rowcount}개 데이터 삭제 완료!")
 
-# ==================== 마진 계산기 (최신 OR 방식) ====================
+# ==================== 마진 계산기 ====================
 class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만 입력해달라거~!"):
     material_cost_per = ui.TextInput(label="하나당 재료비 (키나)", placeholder="예: 5000 또는 1000+1200*3", style=discord.TextStyle.short, required=False)
     total_material_input = ui.TextInput(label="총 재료비 (키나)", placeholder="예: 15000000 또는 5000*3000", style=discord.TextStyle.short, required=False)
@@ -227,11 +246,5 @@ class ProfitModal(ui.Modal, title="최종 순이익 입력"):
 async def margin(interaction: discord.Interaction):
     modal = MarginModal()
     await interaction.response.send_modal(modal)
-
-# 강제 sync (명령어 안 보일 때 필수)
-@client.event
-async def on_ready():
-    await tree.sync(guild=None)   # 전체 서버에 sync
-    print(f'{client.user} 상인단 차트봇 ON (마진계산기 + 차트 전부 합체 완료) - sync 완료')
-print("=== 최신 합체 v2.0 적용됨 ===")
+v1.6
 client.run(TOKEN)
