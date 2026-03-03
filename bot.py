@@ -60,6 +60,17 @@ def price_formatter(x, pos):
     else:
         return f'{int(x):,}'
 
+@tree.command(name="기록", description="아이템 가격 기록")
+async def add_price(interaction: discord.Interaction, 아이템: str, 가격: float):
+    now = datetime.now().isoformat()
+    c.execute("INSERT INTO prices (item_name, price, timestamp) VALUES (?, ?, ?)", (아이템, 가격, now))
+    c.execute("SELECT COUNT(*) FROM prices WHERE item_name=?", (아이템,))
+    count = c.fetchone()[0]
+    if count > 200:
+        c.execute("DELETE FROM prices WHERE id IN (SELECT id FROM prices WHERE item_name=? ORDER BY timestamp ASC LIMIT ?)", (아이템, count-200))
+    conn.commit()
+    await interaction.response.send_message(f"✅ {아이템} {가격:,}키나 기록 완료!")
+
 @tree.command(name="차트", description="아이템 가격 추이 차트")
 @app_commands.describe(아이템="아이템 이름")
 @app_commands.choices(봉타입=[
@@ -117,12 +128,26 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     
     await interaction.followup.send(embed=embed, file=file)
 
-# 아이템 자동완성 (이게 네가 원하던 자동으로 아이템명 나오는 기능)
+# 아이템 자동완성
 @show_chart.autocomplete('아이템')
 async def autocomplete_item(interaction: discord.Interaction, current: str):
     c.execute("SELECT DISTINCT item_name FROM prices WHERE item_name LIKE ? LIMIT 25", (current + '%',))
     items = [row[0] for row in c.fetchall()]
     return [app_commands.Choice(name=item, value=item) for item in items]
+
+@tree.command(name="차트수정", description="잘못된 가격 삭제")
+@app_commands.checks.has_permissions(administrator=True)
+async def delete_price(interaction: discord.Interaction, 아이템: str, 가격: float, 날짜시간: str):
+    try:
+        dt = datetime.strptime(날짜시간, '%Y-%m-%d-%H-%M')
+    except ValueError:
+        await interaction.response.send_message("❌ 형식: yyyy-mm-dd-hh-mm")
+        return
+    start = dt - timedelta(minutes=1)
+    end = dt + timedelta(minutes=1)
+    c.execute("DELETE FROM prices WHERE item_name=? AND price=? AND timestamp BETWEEN ? AND ?", (아이템, 가격, start.isoformat(), end.isoformat()))
+    conn.commit()
+    await interaction.response.send_message(f"✅ {c.rowcount}개 데이터 삭제 완료!")
 
 # ==================== 마진 계산기 ====================
 class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만!"):
