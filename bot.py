@@ -11,7 +11,7 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 (Railway 완전 해결) ====================
+# ==================== 한글 폰트 (Railway 최종 해결) ====================
 plt.rcParams['font.family'] = 'NanumGothic'
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -34,7 +34,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS prices
               timestamp TEXT)''')
 conn.commit()
 
-# ==================== 수식 계산 ====================
 def parse_number(text: str) -> int:
     text = text.replace(" ", "")
     if not re.match(r'^[0-9+\-*/().]+$', text):
@@ -45,11 +44,10 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
-# ==================== on_ready ====================
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.5 완성판 (한글+모든 기능 정상)')
+    print(f'{client.user} 상인단 차트봇 ON - v2.5 최종완성 (한글 완전 해결)')
 
 # ==================== 차트 기능 ====================
 def price_formatter(x, pos):
