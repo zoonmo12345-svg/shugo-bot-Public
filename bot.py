@@ -11,8 +11,8 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 import re
 
-# ==================== 한글 폰트 ====================
-plt.rcParams['font.family'] = 'Malgun Gothic'
+# ==================== 한글 폰트 (Railway 서버용) ====================
+plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 load_dotenv()
@@ -45,13 +45,13 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
-# ==================== on_ready (동기화 강화) ====================
+# ==================== on_ready ====================
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
-    print(f'{client.user} 상인단 차트봇 ON - v2.1 완전판')
+    print(f'{client.user} 상인단 차트봇 ON - v2.2 완성판')
 
-# ==================== 차트 기능 (원래 choices 그대로) ====================
+# ==================== 차트 기능 ====================
 def price_formatter(x, pos):
     if x >= 100_000_000:
         return f'{x/100_000_000:.1f}억'
@@ -59,17 +59,6 @@ def price_formatter(x, pos):
         return f'{x/10_000:.0f}만'
     else:
         return f'{int(x):,}'
-
-@tree.command(name="기록", description="아이템 가격 기록")
-async def add_price(interaction: discord.Interaction, 아이템: str, 가격: float):
-    now = datetime.now().isoformat()
-    c.execute("INSERT INTO prices (item_name, price, timestamp) VALUES (?, ?, ?)", (아이템, 가격, now))
-    c.execute("SELECT COUNT(*) FROM prices WHERE item_name=?", (아이템,))
-    count = c.fetchone()[0]
-    if count > 200:
-        c.execute("DELETE FROM prices WHERE id IN (SELECT id FROM prices WHERE item_name=? ORDER BY timestamp ASC LIMIT ?)", (아이템, count-200))
-    conn.commit()
-    await interaction.response.send_message(f"✅ {아이템} {가격:,}키나 기록 완료!")
 
 @tree.command(name="차트", description="아이템 가격 추이 차트")
 @app_commands.describe(아이템="아이템 이름")
@@ -81,9 +70,9 @@ async def add_price(interaction: discord.Interaction, 아이템: str, 가격: fl
 ])
 async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입: app_commands.Choice[str] = None):
     await interaction.response.defer()
-    
+    await interaction.followup.send("그래프 생성중이라거~ 잠시만!")
+
     봉타입_str = 봉타입.value if 봉타입 else '일봉'
-    
     valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
     
     c.execute("SELECT timestamp, price FROM prices WHERE item_name=? ORDER BY timestamp ASC", (아이템,))
@@ -117,12 +106,8 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.legend(fontsize=11)
     plt.tight_layout()
     
-    for i in range(max(0, len(resampled)-15), len(resampled)):
-        price = resampled['close'].iloc[i]
-        plt.annotate(f'{int(price):,}', (resampled.index[i], price), textcoords="offset points", xytext=(0, 12), ha='center', fontsize=9, color='#0066ff', fontweight='bold')
-    
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=220, bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=180, bbox_inches='tight')
     buf.seek(0)
     plt.close()
     
@@ -132,19 +117,12 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     
     await interaction.followup.send(embed=embed, file=file)
 
-@tree.command(name="차트수정", description="잘못된 가격 삭제")
-@app_commands.checks.has_permissions(administrator=True)
-async def delete_price(interaction: discord.Interaction, 아이템: str, 가격: float, 날짜시간: str):
-    try:
-        dt = datetime.strptime(날짜시간, '%Y-%m-%d-%H-%M')
-    except ValueError:
-        await interaction.response.send_message("❌ 형식: yyyy-mm-dd-hh-mm")
-        return
-    start = dt - timedelta(minutes=1)
-    end = dt + timedelta(minutes=1)
-    c.execute("DELETE FROM prices WHERE item_name=? AND price=? AND timestamp BETWEEN ? AND ?", (아이템, 가격, start.isoformat(), end.isoformat()))
-    conn.commit()
-    await interaction.response.send_message(f"✅ {c.rowcount}개 데이터 삭제 완료!")
+# 아이템 자동완성 (이게 네가 원하던 자동으로 아이템명 나오는 기능)
+@show_chart.autocomplete('아이템')
+async def autocomplete_item(interaction: discord.Interaction, current: str):
+    c.execute("SELECT DISTINCT item_name FROM prices WHERE item_name LIKE ? LIMIT 25", (current + '%',))
+    items = [row[0] for row in c.fetchall()]
+    return [app_commands.Choice(name=item, value=item) for item in items]
 
 # ==================== 마진 계산기 ====================
 class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만!"):
