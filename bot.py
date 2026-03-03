@@ -45,13 +45,14 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
-# ==================== on_ready (하나로 합침) ====================
+# ==================== on_ready (v1.8 표시) ====================
 @client.event
 async def on_ready():
-    await tree.sync(guild=None)   # 전체 서버에 명령어 동기화 (강제)
-    print(f'{client.user} 상인단 차트봇 ON (마진계산기 + 차트 전부 합체 완료) - sync 완료')
+    await tree.sync(guild=None)   # 전체 서버 동기화
+    print(f'{client.user} 상인단 차트봇 ON - v1.8 (마진계산기 + 차트 전부 합체 완료)')
+    print("=== v1.8 버전 적용됨 ===")
 
-# ==================== 차트봇 기존 기능 ====================
+# ==================== 차트 기능 ====================
 def price_formatter(x, pos):
     if x >= 100_000_000:
         return f'{x/100_000_000:.1f}억'
@@ -73,23 +74,14 @@ async def add_price(interaction: discord.Interaction, 아이템: str, 가격: fl
 
 @tree.command(name="차트", description="아이템 가격 추이 차트")
 @app_commands.describe(아이템="아이템 이름")
-@app_commands.choices(봉타입=[
-    app_commands.Choice(name="분봉", value="분봉"),
-    app_commands.Choice(name="시간봉", value="시간봉"),
-    app_commands.Choice(name="일봉", value="일봉"),
-    app_commands.Choice(name="월봉", value="월봉"),
-])
-async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입: app_commands.Choice[str] = None):
+async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입: str = "일봉"):
     await interaction.response.defer()
     
-    봉타입_str = 봉타입.value if 봉타입 else '일봉'
+    valid_types = ["분봉", "시간봉", "일봉", "월봉"]
+    if 봉타입 not in valid_types:
+        봉타입 = "일봉"
     
-    valid_timeframes = {
-        '분봉': 'min',
-        '시간봉': 'h',
-        '일봉': 'D',
-        '월봉': 'ME'
-    }
+    valid_timeframes = {'분봉': 'min', '시간봉': 'h', '일봉': 'D', '월봉': 'ME'}
     
     c.execute("SELECT timestamp, price FROM prices WHERE item_name=? ORDER BY timestamp ASC", (아이템,))
     data = c.fetchall()
@@ -102,7 +94,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
     
-    resampled = df.resample(valid_timeframes[봉타입_str]).agg({'price': ['first', 'max', 'min', 'last']})
+    resampled = df.resample(valid_timeframes[봉타입]).agg({'price': ['first', 'max', 'min', 'last']})
     resampled.columns = ['open', 'high', 'low', 'close']
     resampled = resampled.dropna()
     
@@ -113,9 +105,8 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.figure(figsize=(12, 7))
     plt.plot(resampled.index, resampled['close'], marker='o', linewidth=2.5, color='#0066ff', label='Close Price')
     plt.fill_between(resampled.index, resampled['low'], resampled['high'], color='gray', alpha=0.25)
-    
     plt.gca().yaxis.set_major_formatter(FuncFormatter(price_formatter))
-    plt.title(f'{아이템} 가격 추이 ({봉타입_str})', fontsize=14, pad=20)
+    plt.title(f'{아이템} 가격 추이 ({봉타입})', fontsize=14, pad=20)
     plt.xlabel('시간')
     plt.ylabel('가격 (키나)')
     plt.grid(True, alpha=0.3)
@@ -133,7 +124,7 @@ async def show_chart(interaction: discord.Interaction, 아이템: str, 봉타입
     plt.close()
     
     file = discord.File(buf, filename=f"{아이템}_chart.png")
-    embed = discord.Embed(title=f"{아이템} {봉타입_str} 차트", color=0x00ff00)
+    embed = discord.Embed(title=f"{아이템} {봉타입} 차트", color=0x00ff00)
     embed.set_image(url="attachment://" + f"{아이템}_chart.png")
     
     await interaction.followup.send(embed=embed, file=file)
