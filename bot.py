@@ -42,6 +42,15 @@ def parse_number(text: str) -> int:
     except:
         return int(text)
 
+# 가격 포맷터 함수 (이거 없어서 에러 났음)
+def price_formatter(x, pos):
+    if x >= 100_000_000:
+        return f'{x/100_000_000:.1f}억'
+    elif x >= 10_000:
+        return f'{x/10_000:.0f}만'
+    else:
+        return f'{int(x):,}'
+
 @client.event
 async def on_ready():
     await tree.sync(guild=None)
@@ -127,8 +136,9 @@ async def autocomplete_item(interaction: discord.Interaction, current: str):
     items = [row[0] for row in c.fetchall()]
     return [app_commands.Choice(name=item, value=item) for item in items]
 
-# ==================== 차트수정 (네가 원하는 방식) ====================
+# ==================== 차트수정 (관리자만) ====================
 @tree.command(name="차트수정", description="차트 기록 수정")
+@app_commands.checks.has_permissions(administrator=True)
 @app_commands.describe(아이템="아이템 이름")
 @app_commands.choices(작업=[
     app_commands.Choice(name="전체 초기화", value="초기화"),
@@ -158,9 +168,7 @@ async def chart_edit(interaction: discord.Interaction, 아이템: str, 작업: a
 
         await interaction.response.send_modal(PriceModal())
 
-# ==================== 마진 계산기 (한글 그대로) ====================
-# (기존 마진 계산기 코드 그대로 유지 - 생략 없이 그대로)
-
+# ==================== 마진 계산기 ====================
 class MarginModal(ui.Modal, title="마진 계산 입력 - 재료비는 하나당 OR 총재료비 중 하나만!"):
     material_cost_per = ui.TextInput(label="하나당 재료비 (키나)", placeholder="5000 또는 1000+1200*3", style=discord.TextStyle.short, required=False)
     total_material_input = ui.TextInput(label="총 재료비 (키나)", placeholder="15000000 또는 5000*3000", style=discord.TextStyle.short, required=False)
